@@ -1,0 +1,1 @@
+multi5_permute_fullname 的意思是

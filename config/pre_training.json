@@ -1,0 +1,20 @@
+{
+    "wandb": {
+        "project": "continual_learning",
+        "exp_id": "pre_training_v0",
+        "phase": "pre_training",
+        "run_name": "set_in_code (e.g. task_0, task_1, ...)"
+    },
+    "shared": {
+        "model_path": "",
+        "data_path": ""
+    },
+    "task": {
+        "task_0": {
+            "output_dir": "",
+            "max_steps": 1000,
+            "warmup_steps": 100
+        }
+    }
+
+}
