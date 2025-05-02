@@ -6,6 +6,12 @@ import os
 import shutil
 from transformers import Trainer, TrainingArguments
 
+class PersonIndexInterval(TypedDict):
+    start: int
+    end: int
+
+StepInterval = PersonIndexInterval
+StepIntervalList = List[StepInterval]
 
 class AttentionMaskType(Enum):
     ALL_TRUE = auto()
@@ -103,3 +109,16 @@ def train_and_save_model(trainer: Trainer, training_args: TrainingArguments, rem
         for checkpoint_dir in pathlib.Path(training_args.output_dir).glob("checkpoint-*"):
             # remove all checkpoints when training is done
             shutil.rmtree(checkpoint_dir)
+
+
+def construct_selected_person_index_set(
+        person_index_info_list: PreTrainingPersonIndexInfoList | FineTuningTrainPersonIndexInfoList) -> set[int]:
+    selected_person_index_set = set()
+    for info_dict in person_index_info_list:
+        for person_index in range(info_dict['start'], info_dict['end']):
+            assert person_index not in selected_person_index_set, "The list contains overlap indexes."
+            selected_person_index_set.add(person_index)
+    return selected_person_index_set
+
+
+construct_selected_step_set = construct_selected_person_index_set

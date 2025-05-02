@@ -2,8 +2,8 @@
 from typing import Union, List, Optional
 
 from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments, PreTrainedTokenizer
-from data_module import QAFirstTokenAccuracyDataset, attribute_list, StepIntervalList, construct_selected_step_set
-from utils import FirstTokenAccuracyCalculationStrategy, first_token_accuracy_calculation_interval_when_only_end
+from data_module import QAFirstTokenAccuracyDataset, attribute_list
+from utils import StepIntervalList, FirstTokenAccuracyCalculationStrategy, first_token_accuracy_calculation_interval_when_only_end, construct_selected_step_set
 from data_module import PreTrainingFirstTokenAccuracyDataset
 import torch
 import wandb

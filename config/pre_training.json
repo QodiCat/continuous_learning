@@ -6,15 +6,21 @@
         "run_name": "set_in_code (e.g. task_0, task_1, ...)"
     },
     "shared": {
-        "model_path": "",
+        "model_path": "model/gpt-neox/pythia-160m",
         "data_path": ""
     },
     "task": {
         "task_0": {
-            "output_dir": "",
-            "max_steps": 1000,
-            "warmup_steps": 100
+        "person_index_info_list": [
+            {
+            "start": 0,
+            "end": 100000
+            }
+        ],
+        "previous_output_dir": "",
+        "output_dir": "./model/gpt-neox/v_0720/single/task_0",
+        "max_steps": 80000,
+        "warmup_steps": 1000
         }
     }
-
 }

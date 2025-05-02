@@ -1,0 +1,41 @@
+
+model/
+data/
+wandb/
+
+# Python缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE和编辑器文件
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+tmp/
+temp/
+
+# 构建文件
+build/
+dist/
+*.egg-info/
+
+# 其他缓存文件
+.cache/
+.ipynb_checkpoints/
