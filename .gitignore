@@ -39,3 +39,5 @@ dist/
 # 其他缓存文件
 .cache/
 .ipynb_checkpoints/
+
+.env
