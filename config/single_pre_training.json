@@ -1,7 +1,7 @@
 {
     "wandb": {
         "project": "continual_learning",
-        "exp_id": "pre_training_v0",
+        "exp_id": "single_pre_training",
         "phase": "pre_training",
         "run_name": "set_in_code (e.g. task_0, task_1, ...)"
     },

@@ -2,7 +2,7 @@
 from typing import Union, List, Optional
 
 from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments, PreTrainedTokenizer
-from data_module import QAFirstTokenAccuracyDataset, attribute_list
+from data_module import QAExactMatchDataset, QAFirstTokenAccuracyDataset, attribute_list
 from utils import StepIntervalList, FirstTokenAccuracyCalculationStrategy, first_token_accuracy_calculation_interval_when_only_end, construct_selected_step_set
 from data_module import PreTrainingFirstTokenAccuracyDataset
 import torch
@@ -113,3 +113,79 @@ class PreTrainingShuffleBiographyCallBack(TrainerCallback):
     def on_epoch_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         self.dataset.construct_dataset()
         #kwargs['train_dataloader'].dataset.construct_dataset()
+
+
+class QAExactMatchAccuracyCallback(TrainerCallback):
+    def __init__(self,
+                 qa_exact_match_dataset: QAExactMatchDataset,
+                 tokenizer: PreTrainedTokenizer,
+                 log_prefix: str = ''):
+        self.dataset = qa_exact_match_dataset
+        self.tokenizer = tokenizer
+        self.log_prefix = log_prefix
+
+    # def on_step_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    def on_train_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        model = kwargs['model']
+        tokenizer_original_padding_side = self.tokenizer.padding_side
+        model_original_pad_token_id = model.generation_config.pad_token_id
+
+        # region calculate exact match accuracy
+        model.eval()
+        model.generation_config.pad_token_id = self.tokenizer.pad_token_id  # remove annoying output
+        self.tokenizer.padding_side = 'left'
+        exact_match_info_dict = {}
+        for attribute in attribute_list:
+            exact_match_info_dict[attribute] = {
+                'total': 0,
+                'correct': 0
+            }
+        for i in trange(0, len(self.dataset), args.train_batch_size, desc='Calculating exact match'):
+            batch = self.dataset[i: i + args.train_batch_size]
+            batch_prompt_list: List[str] = batch['prompt']
+            batch_answer_list: List[str] = batch['answer']
+            batch_attribute_list: List[str] = batch['attribute']
+            tokenizer_result = self.tokenizer(batch_prompt_list, return_tensors='pt', padding=True)
+            input_ids, attention_mask = tokenizer_result['input_ids'], tokenizer_result['attention_mask']
+            input_ids, attention_mask = input_ids.to(model.device), attention_mask.to(model.device)
+            generation_result_list = model.generate(input_ids, max_length=self.tokenizer.model_max_length,
+                                                    do_sample=False, attention_mask=attention_mask)
+            generation_result_list = self.tokenizer.batch_decode(generation_result_list)
+            padded_input_list = self.tokenizer.batch_decode(input_ids)
+            for (padded_input, generation, ground_true_answer, attribute) in zip(
+                    padded_input_list, generation_result_list, batch_answer_list, batch_attribute_list):
+                pure_generation = generation[len(padded_input):]
+                candidate_answer = pure_generation[:len(ground_true_answer)]
+                suffix = pure_generation[len(ground_true_answer):]
+                if candidate_answer == ground_true_answer and suffix.startswith(self.tokenizer.eos_token):
+                    exact_match_info_dict[attribute]['correct'] += 1
+                exact_match_info_dict[attribute]['total'] += 1
+        # log result
+        for attribute, info in exact_match_info_dict.items():
+            wandb.log({
+                f'exact_match_accuracy/{self.log_prefix}{attribute}': info['correct'] / info['total']
+            })
+        # save result
+        output_path = os.path.join(args.output_dir, f'{self.log_prefix}exact_match_accuracy_result.json')
+        json.dump(exact_match_info_dict, open(output_path, 'w'), indent=4)
+        # endregion
+
+        model.train()
+        self.tokenizer.padding_side = tokenizer_original_padding_side
+        model.generation_config.pad_token_id = model_original_pad_token_id
+
+
+class SaveSelectedStepCallback(TrainerCallback):
+    def __init__(self, selected_step_interval_list: StepIntervalList):
+        self.selected_step_set = construct_selected_step_set(selected_step_interval_list)
+
+    def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        assert 0 not in self.selected_step_set, ('the first checkpoint is checkpoint-1, which corresponds to the first '
+                                                 'step')
+
+    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        # state.global_step is 0 when the first step is not executed
+        # state.global_step changes to 1
+        # call this in on_step_end instead of on_step_begin
+        if state.global_step in self.selected_step_set:
+            control.should_save = True  # it works, hurry!

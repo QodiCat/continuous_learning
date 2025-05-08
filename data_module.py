@@ -1,7 +1,8 @@
 import json
 from typing import Dict, Any,List,Tuple
 import transformers
-from utils import DataArguments, AdditionalTrainingArguments, AttentionMaskType, PreTrainingPersonIndexInfoList, construct_selected_person_index_set, attribute_list
+from utils import DataArguments, AdditionalTrainingArguments, AttentionMaskType, FineTuningTrainPersonIndexInfoList, FirstTokenAccuracyCalculationStrategy, PreTrainingPersonIndexInfoList, construct_selected_person_index_set, attribute_list
+from utils import first_token_accuracy_calculation_interval_when_only_end
 from tqdm import tqdm
 import torch
 import random
@@ -85,6 +86,51 @@ class BiographyDataset(Dataset):
 
 
 
+
+class QADataset(Dataset):
+    def __init__(self,
+                 tokenizer: transformers.PreTrainedTokenizer,
+                 raw_data: QARawData,
+                 max_length: int):
+        self.input_ids_list, self.label_list, self.attention_mask_list = [], [], []
+        assert type(tokenizer) in (GPT2Tokenizer, GPT2TokenizerFast, GPTNeoXTokenizerFast)
+        for person_index in tqdm(raw_data, desc='Constructing QADataset'):
+            # if len(self.input_ids_list) > 5000: break
+            for attribute in raw_data[person_index]:
+                prompt = raw_data[person_index][attribute]['prompt']
+                answer = raw_data[person_index][attribute]['answer']
+                assert prompt[-1] == ':'
+                prompt_ids = tokenizer(prompt)['input_ids']
+                answer_ids = tokenizer(answer)['input_ids']
+                assert len(prompt_ids) + len(answer_ids) + 1 <= max_length  # +1 for <eos>
+                assert len(prompt_ids) + len(answer_ids) == len(tokenizer(prompt + answer)['input_ids'])
+                pad_length = max_length - (len(prompt_ids) + len(answer_ids) + 1)
+                assert pad_length >= 0
+                input_ids = torch.tensor(
+                    prompt_ids + answer_ids + [tokenizer.eos_token_id] + [tokenizer.pad_token_id] * pad_length,
+                    dtype=torch.int64
+                )
+                target_ids = torch.tensor(
+                    [IGNORE_TOKEN_ID] * len(prompt_ids) + answer_ids + [tokenizer.eos_token_id] +
+                    [IGNORE_TOKEN_ID] * pad_length,
+                    dtype=torch.int64
+                )
+                # although the token indicating <eos> will also be masked, it is not a problem
+                attention_mask = input_ids.ne(tokenizer.pad_token_id)
+                self.input_ids_list.append(input_ids)
+                self.label_list.append(target_ids)
+                self.attention_mask_list.append(attention_mask)
+
+    def __len__(self):
+        return len(self.input_ids_list)
+
+    def __getitem__(self, idx):
+        return {
+            'input_ids': self.input_ids_list[idx],
+            'labels': self.label_list[idx],
+            'attention_mask': self.attention_mask_list[idx],
+        }
+
 class PreTrainingFirstTokenAccuracyDataset(Dataset):
     def __init__(self,
                  tokenizer: transformers.PreTrainedTokenizer,
@@ -151,8 +197,6 @@ class PreTrainingFirstTokenAccuracyDataset(Dataset):
             'attention_mask': self.attention_mask_list[idx],
         }
 
-
-
 class QAFirstTokenAccuracyDataset(Dataset):
     def __init__(self,
                  tokenizer: transformers.PreTrainedTokenizer,
@@ -194,6 +238,28 @@ class QAFirstTokenAccuracyDataset(Dataset):
             'attention_mask': self.attention_mask_list[idx],
         }
 
+class QAExactMatchDataset(Dataset):
+    def __init__(self,
+                 raw_data: QARawData, ):
+        self.prompt_list, self.answer_list, self.attribute_list = [], [], []
+        for person_index in tqdm(raw_data, desc='Constructing QAExactMatchDataset'):
+            for attribute in raw_data[person_index]:
+                # the tokenization of the dataset is left in the callback
+                self.prompt_list.append(raw_data[person_index][attribute]['prompt'])
+                self.answer_list.append(raw_data[person_index][attribute]['answer'])
+                self.attribute_list.append(attribute)
+
+    def __len__(self):
+        return len(self.prompt_list)
+
+    def __getitem__(self, idx):
+        return {
+            'prompt': self.prompt_list[idx],
+            'answer': self.answer_list[idx],
+            'attribute': self.attribute_list[idx],
+        }
+
+
 def filter_biography_data_with_token_info(data_with_token_info: Dict[str, Any],
                                           person_index_info_list: PreTrainingPersonIndexInfoList) -> Dict[str, Any]:
     selected_person_index_set = construct_selected_person_index_set(person_index_info_list)
@@ -202,6 +268,15 @@ def filter_biography_data_with_token_info(data_with_token_info: Dict[str, Any],
         person_index, _ = biography_index.split('_')
         if int(person_index) in selected_person_index_set:
             result[biography_index] = data_with_token_info[biography_index]
+    return result
+
+def filter_qa_data_with_token_info(raw_data: QARawData,
+                                   person_index_info_list: FineTuningTrainPersonIndexInfoList) -> QARawData:
+    selected_person_index_set = construct_selected_person_index_set(person_index_info_list)
+    result = {}
+    for person_index in raw_data:
+        if int(person_index) in selected_person_index_set:
+            result[person_index] = raw_data[person_index]
     return result
 
 def construct_pre_training_data_module(
@@ -217,7 +292,6 @@ def construct_pre_training_data_module(
         raw_data[biography_index] = data_with_token_info[biography_index]['biography']
     return BiographyDataset(tokenizer, raw_data, additional_training_args)
 
-
 def construct_pre_training_first_token_accuracy_data_module(
         tokenizer: transformers.PreTrainedTokenizer,
         data_args: DataArguments,
@@ -227,3 +301,68 @@ def construct_pre_training_first_token_accuracy_data_module(
         data_with_token_info, additional_training_args.pre_training_person_index_info_list)
     assert tokenizer.__class__.__name__ == list(data_with_token_info.values())[0]['tokenizer']
     return PreTrainingFirstTokenAccuracyDataset(tokenizer, data_with_token_info, additional_training_args)
+
+def construct_qa_fine_tuning_data_module(
+        tokenizer: transformers.PreTrainedTokenizer,
+        data_args: DataArguments,
+        additional_training_args: AdditionalTrainingArguments,
+        max_length: int) -> QADataset:
+    raw_data: QARawData = json.load(open(data_args.all_qa_data_path))
+    raw_data = filter_qa_data_with_token_info(raw_data,
+                                              additional_training_args.fine_tuning_training_person_index_info_list)
+    return QADataset(tokenizer, raw_data, max_length)
+
+
+def construct_qa_first_token_accuracy_data_module(
+        tokenizer: transformers.PreTrainedTokenizer,
+        data_args: DataArguments,
+        additional_training_args: AdditionalTrainingArguments,
+        max_length: int
+) -> List[Dict[str, QAFirstTokenAccuracyDataset | str | FirstTokenAccuracyCalculationStrategy | int]]:
+    raw_data: QARawData = json.load(open(data_args.all_qa_data_path))
+    dataset_info_list = []
+    log_prefix_set = set()
+    for info_dict, calculation_strategy, calculation_interval in [
+        (additional_training_args.fine_tuning_validation_person_index_info_dict,
+         additional_training_args.first_token_accuracy_calculation_strategy,
+         additional_training_args.first_token_accuracy_calculation_interval),
+        (additional_training_args.fine_tuning_test_person_index_info_dict,
+         FirstTokenAccuracyCalculationStrategy.ONLY_END,
+         first_token_accuracy_calculation_interval_when_only_end)
+    ]:
+        for key, value in info_dict.items():
+            _raw_data = filter_qa_data_with_token_info(raw_data, value)
+            # avoid duplicate log prefix
+            match calculation_strategy:
+                case FirstTokenAccuracyCalculationStrategy.EPOCH:
+                    log_prefix = f'{key}__epoch__{calculation_interval}'
+                case FirstTokenAccuracyCalculationStrategy.STEP:
+                    log_prefix = f'{key}__step__{calculation_interval}'
+                case FirstTokenAccuracyCalculationStrategy.ONLY_END:
+                    log_prefix = f'{key}__only_end'
+                case _:
+                    raise ValueError('Invalid calculation strategy.')
+            assert log_prefix not in log_prefix_set
+            log_prefix_set.add(log_prefix)
+            # construct dataset
+            dataset_info_list.append({
+                'dataset': QAFirstTokenAccuracyDataset(tokenizer, _raw_data, max_length),
+                'log_prefix': f'{log_prefix}__',
+                'calculation_strategy': calculation_strategy,
+                'calculation_interval': calculation_interval
+            })
+    return dataset_info_list
+
+def construct_qa_exact_match_data_module(
+        data_args: DataArguments,
+        additional_training_args: AdditionalTrainingArguments
+) -> List[Dict[str, QAExactMatchDataset | str]]:
+    raw_data: QARawData = json.load(open(data_args.all_qa_data_path))
+    dataset_info_list = []
+    for key, value in additional_training_args.fine_tuning_test_person_index_info_dict.items():
+        test_raw_data = filter_qa_data_with_token_info(raw_data, value)
+        dataset_info_list.append({
+            'dataset': QAExactMatchDataset(test_raw_data),
+            'log_prefix': f'{key}__'
+        })
+    return dataset_info_list

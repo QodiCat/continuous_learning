@@ -1,0 +1,39 @@
+{
+  "wandb": {
+    "project": "continual_learning",
+    "exp_id": "single_fine_tuning",
+    "phase": "fine_tuning",
+    "run_name": "set_in_code",
+    "checkpoint_run_name": "set_in_code (e.g. task_0, task_1, ...)",
+    "data_run_name": "set_in_code (e.g. task_0, task_1, ...)"
+  },
+  "shared": {
+      "all_qa_data_path": "./data/qa/all.json"
+  },
+  "run": {
+    "0_0": {
+      "train_person_index_info_list": [
+        {
+          "start": 0,
+          "end": 50000
+        }
+      ],
+      "test_person_index_info_dict": {
+        "task_0": [
+          {
+            "start": 50000,
+            "end": 100000
+          }
+        ]
+      },
+      "pre_trained_model_path": "./model/gpt-neox/v_0720/single/task_0",
+      "output_dir": "./model/gpt-neox/v_0720/single/task_0/fine_tuning/0_0",
+      "max_steps": 50000,
+      "num_train_epochs": -1,
+      "learning_rate": 5e-6,
+      "weight_decay": 0.01,
+      "first_token_accuracy_calculation_strategy": "STEP",
+      "first_token_accuracy_calculation_interval": 200
+    }
+  }
+}

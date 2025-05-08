@@ -93,7 +93,7 @@ def train(args):
     
     # region construct data module and trainer
     data_args = DataArguments(
-        biography_data_path=shared_config['data_path']
+        biography_data_path=shared_config['biography_data_path']
     )
     # no eval_dataset
     train_dataset = construct_pre_training_data_module(tokenizer, data_args, additional_training_args)
@@ -121,7 +121,7 @@ def train(args):
 if __name__ == "__main__":
     load_dotenv()
     args = argparse.ArgumentParser()
-    args.add_argument("--config_path", type=str, default="config/pre_training.json")
+    args.add_argument("--config_path", type=str, default="config/multi_pre_training.json")
     args.add_argument("--task_name", type=str, default="task_0")
     args = args.parse_args()
     train(args)

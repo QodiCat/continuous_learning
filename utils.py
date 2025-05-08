@@ -5,6 +5,10 @@ import pathlib
 import os
 import shutil
 from transformers import Trainer, TrainingArguments
+import torch
+import random
+import numpy as np
+
 
 class PersonIndexInterval(TypedDict):
     start: int
@@ -17,7 +21,8 @@ class AttentionMaskType(Enum):
     ALL_TRUE = auto()
     MASK_EOS = auto()
     MASK_PREVIOUS_BIOGRAPHY = auto()
-
+    
+first_token_accuracy_calculation_interval_when_only_end = -1
 
 class FirstTokenAccuracyCalculationStrategy(Enum):
     EPOCH = auto()
@@ -122,3 +127,11 @@ def construct_selected_person_index_set(
 
 
 construct_selected_step_set = construct_selected_person_index_set
+
+def set_seed(seed: int = 1):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    random.seed(seed)
+    np.random.seed(seed)
