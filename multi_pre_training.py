@@ -121,7 +121,7 @@ def train(args):
 if __name__ == "__main__":
     load_dotenv()
     args = argparse.ArgumentParser()
-    args.add_argument("--config_path", type=str, default="config/multi_pre_training.json")
+    args.add_argument("--config_path", type=str, default="config/multi_fine_tuning.json")
     args.add_argument("--task_name", type=str, default="task_0")
     args = args.parse_args()
     train(args)
