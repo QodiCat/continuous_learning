@@ -31,7 +31,7 @@ def fine_tuning(args):
     shared_config: Dict = fine_tuning_config['shared']  # config that is shared by all tasks
     run_config: Dict = fine_tuning_config['run'][args.run_config_dict_key]  # config that is different for each task
     wandb_config: Dict = fine_tuning_config['wandb']
-    wandb_config['run_name'] = args.run_config_dict_key if args.wandb_run_name is None else args.wandb_run_name
+    wandb_config['run_name'] = args.run_config_dict_key if args.run_name is None else args.run_name
     # for continual pre-training and fine-tuning
     wandb_config['pre_trained_model_identifier'] = f'task_{args.run_config_dict_key.split("_")[0]}'
     wandb_config['data_identifier'] = f'task_{args.run_config_dict_key.split("_")[1]}'
@@ -41,7 +41,7 @@ def fine_tuning(args):
     del fine_tuning_config  # avoid misuse
     # endregion
 
-    
+    print(run_config.get('output_dir'))
     # region set trainer arguments
     # Ensure that only one value of pre_trained_model_path is specified
     if run_config.get('output_dir') is not None:
@@ -143,13 +143,13 @@ def fine_tuning(args):
             run_config['first_token_accuracy_calculation_strategy']],
         first_token_accuracy_calculation_interval=run_config['first_token_accuracy_calculation_interval'],
         fine_tuning_training_person_index_info_list=run_config['train_person_index_info_list'],
-        #fine_tuning_validation_person_index_info_dict=run_config['validation_person_index_info_dict'],
+        fine_tuning_validation_person_index_info_dict=run_config['validation_person_index_info_dict'],
         fine_tuning_test_person_index_info_dict=run_config['test_person_index_info_dict'],
     )
     
-    # person_index_info_dict_validation(
-    #     additional_training_args.fine_tuning_validation_person_index_info_dict,
-    #     additional_training_args.fine_tuning_test_person_index_info_dict)
+    person_index_info_dict_validation(
+        additional_training_args.fine_tuning_validation_person_index_info_dict,
+        additional_training_args.fine_tuning_test_person_index_info_dict)
 
     qa_dataset = construct_qa_fine_tuning_data_module(
         tokenizer, data_args, additional_training_args, tokenizer.model_max_length)
@@ -201,7 +201,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, default="config/multi_fine_tuning.json")
     parser.add_argument("--run_config_dict_key", type=str, default="0_0")
-    parser.add_argument("--wandb_run_name", type=str, default="0_0")
+    parser.add_argument("--run_name", type=str, default="0_0")
     parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--pre_trained_model_path", type=str, default=None)
     fine_tuning(parser.parse_args())
